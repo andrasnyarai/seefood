@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent, type TouchEvent } from "react";
 import { ImageUp, X } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ export function ClassifyWorkspace() {
   const streamRef = useRef<MediaStream | null>(null);
   const cameraAttempt = useRef(0);
   const openingCamera = useRef(false);
-  const sectionRef = useRef<HTMLElement>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraPhase, setCameraPhase] = useState<"idle" | "requesting">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -92,31 +92,36 @@ export function ClassifyWorkspace() {
     });
   }, []);
 
-  useEffect(() => {
-    const section = sectionRef.current;
-    if (!section) return;
+  function markTouchStart(event: TouchEvent) {
+    const touch = event.changedTouches[0];
+    touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
 
-    const openFromTouch = (event: TouchEvent) => {
-      const target = event.target;
-      const element =
-        target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
-      if (!element?.closest("[data-open-camera]")) return;
+  function openCameraFromGesture(event: SyntheticEvent) {
+    if ("changedTouches" in event) {
+      const touchEvent = event as TouchEvent;
+      const touch = touchEvent.changedTouches[0];
+      const start = touchStart.current;
+      touchStart.current = null;
+      if (!touch || !start) return;
+      const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+      if (moved > 12) return;
       event.preventDefault();
-      startCamera();
-    };
-
-    section.addEventListener("touchend", openFromTouch, { passive: false });
-    return () => section.removeEventListener("touchend", openFromTouch);
-  });
+    }
+    startCamera();
+  }
 
   useEffect(() => {
     const video = videoRef.current;
     const stream = streamRef.current;
     if (!cameraReady || !video || !stream) return;
     video.muted = true;
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("webkit-playsinline", "true");
+    video.controls = false;
     video.srcObject = stream;
     void video.play().catch(() => {
-      setCameraError("Tap the preview to start the camera.");
+      setCameraError("Tap Capture after the live view appears.");
     });
   }, [cameraReady]);
 
@@ -220,7 +225,6 @@ export function ClassifyWorkspace() {
 
   return (
     <section
-      ref={sectionRef}
       className={cn(
         "relative mx-auto flex w-full max-w-lg flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-card shadow-2xl transition-colors duration-200",
         dragging && "border-white/40",
@@ -247,6 +251,8 @@ export function ClassifyWorkspace() {
             autoPlay
             muted
             playsInline
+            controls={false}
+            disablePictureInPicture
           />
         ) : null}
         {previewUrl ? (
@@ -262,9 +268,10 @@ export function ClassifyWorkspace() {
           <div className="relative mx-3 mt-3 min-h-0 flex-1">
             <button
               type="button"
-              data-open-camera=""
               className="absolute inset-0 flex cursor-pointer touch-manipulation items-center justify-center px-8 text-center text-sm text-white select-none desktop:hidden"
-              onClick={startCamera}
+              onClick={openCameraFromGesture}
+              onTouchStart={markTouchStart}
+              onTouchEnd={openCameraFromGesture}
             >
               {cameraPrompt}
             </button>
@@ -352,9 +359,10 @@ export function ClassifyWorkspace() {
                 {!cameraReady ? (
                   <button
                     type="button"
-                    data-open-camera=""
                     className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
-                    onClick={startCamera}
+                    onClick={openCameraFromGesture}
+                    onTouchStart={markTouchStart}
+                    onTouchEnd={openCameraFromGesture}
                   >
                     {cameraPhase === "requesting" ? "Requesting camera…" : "Open camera"}
                   </button>

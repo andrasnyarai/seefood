@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Images } from "lucide-react";
 import { HistorySheet } from "@/components/history-sheet";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -12,20 +11,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="pointer-events-none fixed inset-x-0 top-0 z-20 flex h-16 items-center justify-center">
         <p className="text-sm font-medium tracking-tight">SeeFood</p>
       </header>
-      <button
-        type="button"
-        className="fixed top-4 left-4 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/15 bg-card text-foreground select-none"
-        aria-label="Open history"
-        onClick={() => setHistoryOpen(true)}
-        onTouchEnd={(event) => {
-          event.preventDefault();
-          setHistoryOpen(true);
-        }}
-      >
-        <Images className="size-4" />
-      </button>
       <div className="flex flex-1 flex-col px-4 pt-16 pb-6">{children}</div>
-      {historyOpen ? <HistorySheet onClose={() => setHistoryOpen(false)} /> : null}
+      <HistorySheet open={historyOpen} onOpenChange={setHistoryOpen} />
     </div>
   );
 }
