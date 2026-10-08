@@ -5,7 +5,10 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   serverExternalPackages: ["@huggingface/transformers", "onnxruntime-node", "sharp"],
   outputFileTracingIncludes: {
-    "/api/classify": ["./node_modules/onnxruntime-node/bin/napi-v6/linux/**/*"],
+    "/api/classify": [
+      "./node_modules/onnxruntime-node/**/*",
+      "./node_modules/onnxruntime-common/**/*",
+    ],
   },
   outputFileTracingExcludes: {
     "*": [

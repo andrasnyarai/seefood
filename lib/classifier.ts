@@ -1,3 +1,4 @@
+import "onnxruntime-node";
 import { env, pipeline, type ImageClassificationPipeline } from "@huggingface/transformers";
 import { unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
