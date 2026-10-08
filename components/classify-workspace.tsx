@@ -263,8 +263,7 @@ export function ClassifyWorkspace() {
   return (
     <section
       className={cn(
-        "relative mx-auto flex w-full max-w-lg flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-card shadow-2xl transition-colors duration-200",
-        dragging && "border-white/40",
+        "relative mx-auto flex w-full max-w-lg flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-card shadow-2xl",
       )}
       onDragOver={(event) => {
         event.preventDefault();
@@ -295,13 +294,22 @@ export function ClassifyWorkspace() {
             />
           ) : null}
           {previewUrl ? (
-            // The preview is a local object URL created from the selected file.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewUrl}
-              alt="Selected upload"
-              className="absolute inset-0 size-full object-cover"
-            />
+            <>
+              {/* Soft fill so wide or tall photos keep their full frame without letterboxing to black. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewUrl}
+                alt=""
+                aria-hidden
+                className="pointer-events-none absolute inset-0 size-full scale-110 object-cover opacity-70 blur-2xl"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewUrl}
+                alt="Selected upload"
+                className="absolute inset-0 size-full object-contain"
+              />
+            </>
           ) : null}
           {!previewUrl && !cameraReady ? (
             <>
@@ -354,29 +362,41 @@ export function ClassifyWorkspace() {
           {cameraReady || previewUrl ? (
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black to-transparent"
             />
+          ) : null}
+
+          {(status === "running" || scan || error) && (cameraReady || previewUrl) ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 space-y-2 p-4">
+              {status === "running" ? (
+                <PendingDots label="Classifying" className="text-white" />
+              ) : null}
+              {scan ? (
+                <div className="text-center" aria-live="polite">
+                  <p className="text-3xl font-semibold tracking-tight text-white">
+                    {verdictHeadline(scan.verdict)}
+                  </p>
+                  <p className="mt-1 text-sm text-white/70">
+                    {formatFoodLabel(scan.label)} · {formatConfidence(scan.confidence)}
+                    {scan.lowConfidence ? " · Low confidence" : ""}
+                  </p>
+                </div>
+              ) : null}
+              {error ? (
+                <p className="text-center text-sm text-red-300" role="alert">
+                  {error}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
         <div className="relative z-20 shrink-0 space-y-3 bg-black p-3">
-          {status === "running" ? (
+          {status === "running" && !previewUrl && !cameraReady ? (
             <PendingDots label="Classifying" className="text-white" />
           ) : null}
 
-          {scan ? (
-            <div className="text-center" aria-live="polite">
-              <p className="text-3xl font-semibold tracking-tight text-white">
-                {verdictHeadline(scan.verdict)}
-              </p>
-              <p className="mt-1 text-sm text-white/70">
-                {formatFoodLabel(scan.label)} · {formatConfidence(scan.confidence)}
-                {scan.lowConfidence ? " · Low confidence" : ""}
-              </p>
-            </div>
-          ) : null}
-
-          {error ? (
+          {error && !previewUrl && !cameraReady ? (
             <p className="text-center text-sm text-red-300" role="alert">
               {error}
             </p>
