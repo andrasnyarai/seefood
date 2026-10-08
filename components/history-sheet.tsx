@@ -146,10 +146,10 @@ export function HistorySheet({
           }}
           aria-hidden={!shown}
         >
-          <div className="flex items-center px-4 pt-4 pb-2 pr-16">
+          <div className="flex h-16 shrink-0 items-center px-4 pr-16">
             <h2 className="text-sm font-medium">History</h2>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="seefood-scroll flex-1 overflow-y-auto px-4 py-4 pr-2">
             {scans === null ? (
               <PendingDots label="Loading history" className="text-muted-foreground" />
             ) : null}
