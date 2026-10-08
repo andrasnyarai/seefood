@@ -14,6 +14,7 @@ type Status = "idle" | "running" | "done" | "error";
 
 export function ClassifyWorkspace() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFit, setPreviewFit] = useState<"contain" | "cover">("contain");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
@@ -172,20 +173,37 @@ export function ClassifyWorkspace() {
 
   async function captureFrame() {
     const video = videoRef.current;
-    if (!video || video.videoWidth === 0) return;
+    if (!video || video.videoWidth === 0 || video.clientWidth === 0) return;
+
+    // Match object-cover: only the pixels shown in the live view are classified.
+    const sourceWidth = video.videoWidth;
+    const sourceHeight = video.videoHeight;
+    const viewRatio = video.clientWidth / video.clientHeight;
+    const sourceRatio = sourceWidth / sourceHeight;
+    let cropWidth = sourceWidth;
+    let cropHeight = sourceHeight;
+    let cropX = 0;
+    let cropY = 0;
+    if (sourceRatio > viewRatio) {
+      cropWidth = Math.round(sourceHeight * viewRatio);
+      cropX = Math.round((sourceWidth - cropWidth) / 2);
+    } else {
+      cropHeight = Math.round(sourceWidth / viewRatio);
+      cropY = Math.round((sourceHeight - cropHeight) / 2);
+    }
 
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.drawImage(video, 0, 0);
+    context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, "image/jpeg", 0.92);
     });
     if (!blob) return;
-    takeFile(new File([blob], "capture.jpg", { type: "image/jpeg" }));
+    takeFile(new File([blob], "capture.jpg", { type: "image/jpeg" }), "cover");
   }
 
   function reset() {
@@ -193,12 +211,14 @@ export function ClassifyWorkspace() {
     setStatus("idle");
     setScan(null);
     setError(null);
+    setPreviewFit("contain");
     setPreviewUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return null;
     });
     if (videoRef.current && streamRef.current) {
       void videoRef.current.play();
+      setCameraPlaying(true);
     }
   }
 
@@ -244,8 +264,9 @@ export function ClassifyWorkspace() {
     }
   }
 
-  function takeFile(next: File | null) {
+  function takeFile(next: File | null, fit: "contain" | "cover" = "contain") {
     if (!next) return;
+    setPreviewFit(fit);
     setPreviewUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return URL.createObjectURL(next);
@@ -276,26 +297,34 @@ export function ClassifyWorkspace() {
         takeFile(event.dataTransfer.files?.[0] ?? null);
       }}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col bg-black">
-        <div className="relative min-h-0 flex-1">
-          {cameraReady ? (
-            <video
-              ref={videoRef}
-              className={cn(
-                "pointer-events-none absolute inset-0 size-full object-cover",
-                (!cameraPlaying || previewUrl) && "invisible",
-              )}
-              autoPlay
-              muted
-              playsInline
-              controls={false}
-              disablePictureInPicture
-              controlsList="nodownload nofullscreen noremoteplayback"
+      <div className="relative min-h-0 flex-1 bg-black">
+        {cameraReady ? (
+          <video
+            ref={videoRef}
+            className={cn(
+              "pointer-events-none absolute inset-0 size-full object-cover",
+              (!cameraPlaying || previewUrl) && "invisible",
+            )}
+            autoPlay
+            muted
+            playsInline
+            controls={false}
+            disablePictureInPicture
+            controlsList="nodownload nofullscreen noremoteplayback"
+          />
+        ) : null}
+        {previewUrl ? (
+          previewFit === "cover" ? (
+            // Camera captures stay cover-cropped so the preview matches the live view.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewUrl}
+              alt="Selected upload"
+              className="absolute inset-0 size-full object-cover"
             />
-          ) : null}
-          {previewUrl ? (
+          ) : (
             <>
-              {/* Soft fill so wide or tall photos keep their full frame without letterboxing to black. */}
+              {/* Soft fill so dropped or chosen photos keep their full frame. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={previewUrl}
@@ -310,131 +339,128 @@ export function ClassifyWorkspace() {
                 className="absolute inset-0 size-full object-contain"
               />
             </>
-          ) : null}
-          {!previewUrl && !cameraReady ? (
-            <>
-              <button
-                type="button"
-                className="absolute inset-0 flex cursor-pointer touch-manipulation items-center justify-center px-8 text-center text-sm text-white select-none desktop:hidden"
-                onClick={openCameraFromGesture}
-                onTouchStart={markTouchStart}
-                onTouchEnd={openCameraFromGesture}
-              >
-                {cameraPrompt}
-              </button>
-              <label
-                className={cn(
-                  "absolute inset-x-3 top-3 bottom-0 hidden cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed px-8 text-center desktop:flex",
-                  dragging
-                    ? "border-foreground bg-white/10"
-                    : "border-white/25 bg-white/5 hover:border-white/50 hover:bg-white/10",
-                )}
-              >
-                <input
-                  className="absolute inset-0 z-10 size-full cursor-pointer opacity-0 file:hidden"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  onChange={(event) => {
-                    takeFile(event.target.files?.[0] ?? null);
-                    event.target.value = "";
-                  }}
-                />
-                <ImageUp className="relative mb-3 size-8 text-muted-foreground" />
-                <span className="relative text-base font-medium">Drop a file here</span>
-                <span className="relative mt-1 text-sm text-muted-foreground">
-                  JPEG, PNG, WebP, or GIF
-                </span>
-              </label>
-            </>
-          ) : null}
-
-          {cameraReady && !previewUrl ? (
+          )
+        ) : null}
+        {!previewUrl && !cameraReady ? (
+          <>
             <button
               type="button"
-              className="absolute top-3 right-3 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/60 text-white select-none"
-              aria-label="Close camera"
-              onClick={closeCamera}
+              className="absolute inset-0 flex cursor-pointer touch-manipulation items-center justify-center px-8 pb-32 text-center text-sm text-white select-none desktop:hidden"
+              onClick={openCameraFromGesture}
+              onTouchStart={markTouchStart}
+              onTouchEnd={openCameraFromGesture}
             >
-              <X className="size-5" />
+              {cameraPrompt}
             </button>
-          ) : null}
+            <label
+              className={cn(
+                "absolute inset-x-3 top-3 bottom-[7.5rem] hidden cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed px-8 text-center desktop:flex",
+                dragging
+                  ? "border-foreground bg-white/10"
+                  : "border-white/25 bg-white/5 hover:border-white/50 hover:bg-white/10",
+              )}
+            >
+              <input
+                className="absolute inset-0 z-10 size-full cursor-pointer opacity-0 file:hidden"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(event) => {
+                  takeFile(event.target.files?.[0] ?? null);
+                  event.target.value = "";
+                }}
+              />
+              <ImageUp className="relative mb-3 size-8 text-muted-foreground" />
+              <span className="relative text-base font-medium">Drop a file here</span>
+              <span className="relative mt-1 text-sm text-muted-foreground">
+                JPEG, PNG, WebP, or GIF
+              </span>
+            </label>
+          </>
+        ) : null}
 
+        {cameraReady && !previewUrl ? (
+          <button
+            type="button"
+            className="absolute top-3 right-3 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/60 text-white select-none"
+            aria-label="Close camera"
+            onClick={closeCamera}
+          >
+            <X className="size-5" />
+          </button>
+        ) : null}
+
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
           {cameraReady || previewUrl ? (
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black via-black/80 to-transparent"
             />
           ) : null}
-
-          {(status === "running" || scan || error) && (cameraReady || previewUrl) ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 space-y-2 p-4">
-              {status === "running" ? (
-                <PendingDots label="Classifying" className="text-white" />
-              ) : null}
-              {scan ? (
-                <div className="text-center" aria-live="polite">
-                  <p className="text-3xl font-semibold tracking-tight text-white">
-                    {verdictHeadline(scan.verdict)}
-                  </p>
-                  <p className="mt-1 text-sm text-white/70">
-                    {formatFoodLabel(scan.label)} · {formatConfidence(scan.confidence)}
-                    {scan.lowConfidence ? " · Low confidence" : ""}
-                  </p>
-                </div>
-              ) : null}
-              {error ? (
-                <p className="text-center text-sm text-red-300" role="alert">
-                  {error}
+          <div className="pointer-events-auto relative space-y-3 p-3">
+            {status === "running" ? (
+              <PendingDots label="Classifying" className="text-white" />
+            ) : null}
+            {scan ? (
+              <div className="text-center" aria-live="polite">
+                <p className="text-3xl font-semibold tracking-tight text-white">
+                  {verdictHeadline(scan.verdict)}
                 </p>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+                <p className="mt-1 text-sm text-white/70">
+                  {formatFoodLabel(scan.label)} · {formatConfidence(scan.confidence)}
+                  {scan.lowConfidence ? " · Low confidence" : ""}
+                </p>
+              </div>
+            ) : null}
+            {error ? (
+              <p className="text-center text-sm text-red-300" role="alert">
+                {error}
+              </p>
+            ) : null}
 
-        <div className="relative z-20 shrink-0 space-y-3 bg-black p-3">
-          {status === "running" && !previewUrl && !cameraReady ? (
-            <PendingDots label="Classifying" className="text-white" />
-          ) : null}
-
-          {error && !previewUrl && !cameraReady ? (
-            <p className="text-center text-sm text-red-300" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          {!previewUrl ? (
             <div className="flex flex-col gap-2">
-              {(secureContext === false || cameraError) && !cameraReady ? (
+              {(secureContext === false || cameraError) && !cameraReady && !previewUrl ? (
                 <p className="hidden text-center text-sm text-white/80 desktop:block">
                   {secureContext === false
                     ? "Safari will not ask for the camera while the address bar says Not Secure. Open the https address."
                     : cameraError}
                 </p>
               ) : null}
-              {!cameraReady ? (
-                <button
-                  type="button"
-                  className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
-                  onClick={openCameraFromGesture}
-                  onTouchStart={markTouchStart}
-                  onTouchEnd={openCameraFromGesture}
-                >
-                  {cameraPhase === "requesting" ? "Requesting camera…" : "Open camera"}
-                </button>
+              {!previewUrl ? (
+                !cameraReady ? (
+                  <button
+                    type="button"
+                    className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
+                    onClick={openCameraFromGesture}
+                    onTouchStart={markTouchStart}
+                    onTouchEnd={openCameraFromGesture}
+                  >
+                    {cameraPhase === "requesting" ? "Requesting camera…" : "Open camera"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
+                    disabled={status === "running"}
+                    onClick={() => void captureFrame()}
+                  >
+                    Capture
+                  </button>
+                )
               ) : (
                 <button
                   type="button"
                   className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
                   disabled={status === "running"}
-                  onClick={() => void captureFrame()}
+                  onClick={reset}
                 >
-                  Capture
+                  Try another
                 </button>
               )}
               <label
                 className={cn(
                   buttonVariants({ variant: "outline" }),
                   "relative h-11 w-full overflow-hidden touch-manipulation border-white/15 bg-black/40 text-white transition-colors hover:bg-white/15 hover:text-white",
+                  status === "running" && "pointer-events-none opacity-50",
                 )}
               >
                 Choose photo
@@ -442,6 +468,7 @@ export function ClassifyWorkspace() {
                   className="absolute inset-0 z-10 size-full cursor-pointer opacity-0 file:hidden"
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
+                  disabled={status === "running"}
                   onChange={(event) => {
                     takeFile(event.target.files?.[0] ?? null);
                     event.target.value = "";
@@ -449,16 +476,7 @@ export function ClassifyWorkspace() {
                 />
               </label>
             </div>
-          ) : (
-            <button
-              type="button"
-              className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
-              disabled={status === "running"}
-              onClick={reset}
-            >
-              Try another
-            </button>
-          )}
+          </div>
         </div>
       </div>
     </section>
