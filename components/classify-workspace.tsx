@@ -92,6 +92,25 @@ export function ClassifyWorkspace() {
     });
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const warm = () => {
+      void fetch("/api/warmup", { method: "POST", signal: controller.signal }).catch(() => undefined);
+    };
+    const idle = window.requestIdleCallback?.(warm, { timeout: 1500 });
+    if (idle !== undefined) {
+      return () => {
+        window.cancelIdleCallback?.(idle);
+        controller.abort();
+      };
+    }
+    const timer = window.setTimeout(warm, 400);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, []);
+
   function markTouchStart(event: TouchEvent) {
     const touch = event.changedTouches[0];
     touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;

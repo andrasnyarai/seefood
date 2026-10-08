@@ -27,6 +27,11 @@ function getClassifier() {
   return classifierPromise;
 }
 
+/** Start loading the model without waiting for an image. Safe to call often. */
+export function warmClassifier() {
+  return getClassifier().then(() => undefined);
+}
+
 export type RawPrediction = {
   label: string;
   score: number;

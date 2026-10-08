@@ -1,4 +1,4 @@
-import { classifyJpeg } from "@/lib/classifier";
+import { classifyJpeg, warmClassifier } from "@/lib/classifier";
 import { toStoredJpeg } from "@/lib/images";
 import { rowToScan, type ClassificationRow } from "@/lib/scans";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
@@ -40,6 +40,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Kick the model load while sharp is still working on the JPEG.
+    void warmClassifier();
     const jpeg = await toStoredJpeg(Buffer.from(await image.arrayBuffer()));
     const rawPredictions = await classifyJpeg(jpeg);
     const [top] = rawPredictions;
