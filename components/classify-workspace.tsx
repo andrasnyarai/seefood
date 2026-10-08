@@ -8,17 +8,16 @@ import { resizeImageFile } from "@/lib/resize-image";
 import { rememberScanId } from "@/lib/scan-history";
 import type { Scan } from "@/lib/types";
 import { formatConfidence, formatFoodLabel, verdictHeadline } from "@/lib/verdict";
+import { PendingDots } from "@/components/pending-dots";
 
 type Status = "idle" | "running" | "done" | "error";
 
 export function ClassifyWorkspace() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
-  const [warming, setWarming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [dragging, setDragging] = useState(false);
-  const warmingTimer = useRef<number | null>(null);
   const requestId = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -149,11 +148,9 @@ export function ClassifyWorkspace() {
 
   function reset() {
     requestId.current += 1;
-    clearWarmingTimer();
     setStatus("idle");
     setScan(null);
     setError(null);
-    setWarming(false);
     setPreviewUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return null;
@@ -166,27 +163,14 @@ export function ClassifyWorkspace() {
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
-      if (warmingTimer.current) window.clearTimeout(warmingTimer.current);
     };
   }, [previewUrl]);
-
-  function clearWarmingTimer() {
-    if (warmingTimer.current) {
-      window.clearTimeout(warmingTimer.current);
-      warmingTimer.current = null;
-    }
-  }
 
   async function classifyFile(file: File) {
     const id = ++requestId.current;
     setStatus("running");
-    setWarming(false);
     setError(null);
     setScan(null);
-    clearWarmingTimer();
-    warmingTimer.current = window.setTimeout(() => {
-      if (requestId.current === id) setWarming(true);
-    }, 2500);
 
     try {
       const jpeg = await resizeImageFile(file);
@@ -215,11 +199,6 @@ export function ClassifyWorkspace() {
       if (requestId.current !== id) return;
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Classification failed.");
-    } finally {
-      if (requestId.current === id) {
-        clearWarmingTimer();
-        setWarming(false);
-      }
     }
   }
 
@@ -257,7 +236,7 @@ export function ClassifyWorkspace() {
         takeFile(event.dataTransfer.files?.[0] ?? null);
       }}
     >
-      <div className="relative min-h-0 flex-1 bg-black">
+      <div className="relative flex min-h-0 flex-1 flex-col bg-black">
         {cameraReady ? (
           <video
             ref={videoRef}
@@ -280,18 +259,18 @@ export function ClassifyWorkspace() {
           />
         ) : null}
         {!previewUrl && !cameraReady ? (
-          <>
+          <div className="relative mx-3 mt-3 min-h-0 flex-1">
             <button
               type="button"
               data-open-camera=""
-              className="absolute inset-0 z-0 flex touch-manipulation items-center justify-center px-8 pb-36 text-center text-sm text-white select-none md:hidden"
+              className="absolute inset-0 flex cursor-pointer touch-manipulation items-center justify-center px-8 text-center text-sm text-white select-none desktop:hidden"
               onClick={startCamera}
             >
               {cameraPrompt}
             </button>
             <label
               className={cn(
-                "absolute inset-3 z-0 hidden cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-8 pb-28 text-center md:flex",
+                "absolute inset-0 hidden cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-8 text-center desktop:flex",
                 dragging
                   ? "border-foreground bg-white/10"
                   : "border-white/25 bg-white/5 hover:border-white/50 hover:bg-white/10",
@@ -310,13 +289,13 @@ export function ClassifyWorkspace() {
               <span className="text-base font-medium">Drop a file here</span>
               <span className="mt-1 text-sm text-muted-foreground">JPEG, PNG, WebP, or GIF</span>
             </label>
-          </>
+          </div>
         ) : null}
 
         {cameraReady && !previewUrl ? (
           <button
             type="button"
-            className="absolute top-3 right-3 z-30 flex size-11 touch-manipulation items-center justify-center rounded-full bg-black/60 text-white select-none"
+            className="absolute top-3 right-3 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/60 text-white select-none"
             aria-label="Close camera"
             onClick={closeCamera}
           >
@@ -324,7 +303,14 @@ export function ClassifyWorkspace() {
           </button>
         ) : null}
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end gap-3 p-4">
+        <div
+          className={cn(
+            "z-20 flex flex-col gap-3",
+            cameraReady || previewUrl
+              ? "pointer-events-none absolute inset-x-0 bottom-0 p-4"
+              : "relative p-3",
+          )}
+        >
           {cameraReady || previewUrl ? (
             <div
               aria-hidden
@@ -333,9 +319,7 @@ export function ClassifyWorkspace() {
           ) : null}
           <div className="pointer-events-auto relative flex flex-col gap-3">
             {status === "running" ? (
-              <p className="text-center text-sm text-white/70" aria-live="polite">
-                {warming ? "Warming the classifier. The first scan can take a minute." : "Classifying."}
-              </p>
+              <PendingDots label="Classifying" className="text-white" />
             ) : null}
 
             {scan ? (
@@ -359,7 +343,7 @@ export function ClassifyWorkspace() {
             {!previewUrl ? (
               <div className="flex flex-col gap-2">
                 {(secureContext === false || cameraError) && !cameraReady ? (
-                  <p className="hidden text-center text-sm text-white/80 md:block">
+                  <p className="hidden text-center text-sm text-white/80 desktop:block">
                     {secureContext === false
                       ? "Safari will not ask for the camera while the address bar says Not Secure. Open the https address."
                       : cameraError}
@@ -369,7 +353,7 @@ export function ClassifyWorkspace() {
                   <button
                     type="button"
                     data-open-camera=""
-                    className="h-11 w-full touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
+                    className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
                     onClick={startCamera}
                   >
                     {cameraPhase === "requesting" ? "Requesting camera…" : "Open camera"}
@@ -377,7 +361,7 @@ export function ClassifyWorkspace() {
                 ) : (
                   <button
                     type="button"
-                    className="h-11 w-full touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
+                    className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
                     disabled={status === "running"}
                     onClick={() => void captureFrame()}
                   >
@@ -405,7 +389,7 @@ export function ClassifyWorkspace() {
             ) : (
               <button
                 type="button"
-                className="h-11 w-full touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
+                className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
                 disabled={status === "running"}
                 onClick={reset}
               >

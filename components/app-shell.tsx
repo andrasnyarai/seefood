@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <button
         type="button"
-        className="fixed top-4 left-4 z-30 flex size-11 touch-manipulation items-center justify-center rounded-full border border-white/15 bg-card text-foreground select-none"
+        className="fixed top-4 left-4 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/15 bg-card text-foreground select-none"
         aria-label="Open history"
         onClick={() => setHistoryOpen(true)}
         onTouchEnd={(event) => {
