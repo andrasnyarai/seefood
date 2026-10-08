@@ -175,4 +175,11 @@
   html {
     @apply font-sans;
   }
+  /* iOS Safari paints a play/stop control on <video> even with controls={false}. */
+  video::-webkit-media-controls,
+  video::-webkit-media-controls-start-playback-button,
+  video::-webkit-media-controls-enclosure {
+    display: none !important;
+    -webkit-appearance: none;
+  }
 }

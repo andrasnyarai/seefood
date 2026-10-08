@@ -25,6 +25,7 @@ export function ClassifyWorkspace() {
   const openingCamera = useRef(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraPlaying, setCameraPlaying] = useState(false);
   const [cameraPhase, setCameraPhase] = useState<"idle" | "requesting">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [secureContext, setSecureContext] = useState<boolean | null>(null);
@@ -36,6 +37,7 @@ export function ClassifyWorkspace() {
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraReady(false);
+    setCameraPlaying(false);
     setCameraPhase("idle");
     setCameraError(null);
   }
@@ -134,14 +136,30 @@ export function ClassifyWorkspace() {
     const video = videoRef.current;
     const stream = streamRef.current;
     if (!cameraReady || !video || !stream) return;
+    let cancelled = false;
     video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.controls = false;
+    video.disablePictureInPicture = true;
     video.setAttribute("playsinline", "true");
     video.setAttribute("webkit-playsinline", "true");
-    video.controls = false;
+    video.setAttribute("controlslist", "nodownload nofullscreen noremoteplayback");
     video.srcObject = stream;
-    void video.play().catch(() => {
-      setCameraError("Tap Capture after the live view appears.");
-    });
+    void video
+      .play()
+      .then(() => {
+        if (!cancelled) setCameraPlaying(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCameraPlaying(false);
+          setCameraError("Tap Capture after the live view appears.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [cameraReady]);
 
   useEffect(() => {
@@ -260,170 +278,167 @@ export function ClassifyWorkspace() {
       }}
     >
       <div className="relative flex min-h-0 flex-1 flex-col bg-black">
-        {cameraReady ? (
-          <video
-            ref={videoRef}
-            className={cn(
-              "pointer-events-none absolute inset-0 size-full object-cover",
-              previewUrl && "invisible",
-            )}
-            autoPlay
-            muted
-            playsInline
-            controls={false}
-            disablePictureInPicture
-          />
-        ) : null}
-        {previewUrl ? (
-          // The preview is a local object URL created from the selected file.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={previewUrl}
-            alt="Selected upload"
-            className="absolute inset-0 size-full object-cover"
-          />
-        ) : null}
-        {!previewUrl && !cameraReady ? (
-          <div className="relative mx-3 mt-3 min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1">
+          {cameraReady ? (
+            <video
+              ref={videoRef}
+              className={cn(
+                "pointer-events-none absolute inset-0 size-full object-cover",
+                (!cameraPlaying || previewUrl) && "invisible",
+              )}
+              autoPlay
+              muted
+              playsInline
+              controls={false}
+              disablePictureInPicture
+              controlsList="nodownload nofullscreen noremoteplayback"
+            />
+          ) : null}
+          {previewUrl ? (
+            // The preview is a local object URL created from the selected file.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewUrl}
+              alt="Selected upload"
+              className="absolute inset-0 size-full object-cover"
+            />
+          ) : null}
+          {!previewUrl && !cameraReady ? (
+            <>
+              <button
+                type="button"
+                className="absolute inset-0 flex cursor-pointer touch-manipulation items-center justify-center px-8 text-center text-sm text-white select-none desktop:hidden"
+                onClick={openCameraFromGesture}
+                onTouchStart={markTouchStart}
+                onTouchEnd={openCameraFromGesture}
+              >
+                {cameraPrompt}
+              </button>
+              <label
+                className={cn(
+                  "absolute inset-x-3 top-3 bottom-0 hidden cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed px-8 text-center desktop:flex",
+                  dragging
+                    ? "border-foreground bg-white/10"
+                    : "border-white/25 bg-white/5 hover:border-white/50 hover:bg-white/10",
+                )}
+              >
+                <input
+                  className="absolute inset-0 z-10 size-full cursor-pointer opacity-0 file:hidden"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(event) => {
+                    takeFile(event.target.files?.[0] ?? null);
+                    event.target.value = "";
+                  }}
+                />
+                <ImageUp className="relative mb-3 size-8 text-muted-foreground" />
+                <span className="relative text-base font-medium">Drop a file here</span>
+                <span className="relative mt-1 text-sm text-muted-foreground">
+                  JPEG, PNG, WebP, or GIF
+                </span>
+              </label>
+            </>
+          ) : null}
+
+          {cameraReady && !previewUrl ? (
             <button
               type="button"
-              className="absolute inset-0 flex cursor-pointer touch-manipulation items-center justify-center px-8 text-center text-sm text-white select-none desktop:hidden"
-              onClick={openCameraFromGesture}
-              onTouchStart={markTouchStart}
-              onTouchEnd={openCameraFromGesture}
+              className="absolute top-3 right-3 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/60 text-white select-none"
+              aria-label="Close camera"
+              onClick={closeCamera}
             >
-              {cameraPrompt}
+              <X className="size-5" />
             </button>
-            <label
-              className={cn(
-                "absolute inset-0 hidden cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-8 text-center desktop:flex",
-                dragging
-                  ? "border-foreground bg-white/10"
-                  : "border-white/25 bg-white/5 hover:border-white/50 hover:bg-white/10",
-              )}
-            >
-              <input
-                className="absolute inset-0 size-full cursor-pointer opacity-0"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={(event) => {
-                  takeFile(event.target.files?.[0] ?? null);
-                  event.target.value = "";
-                }}
-              />
-              <ImageUp className="mb-3 size-8 text-muted-foreground" />
-              <span className="text-base font-medium">Drop a file here</span>
-              <span className="mt-1 text-sm text-muted-foreground">JPEG, PNG, WebP, or GIF</span>
-            </label>
-          </div>
-        ) : null}
+          ) : null}
 
-        {cameraReady && !previewUrl ? (
-          <button
-            type="button"
-            className="absolute top-3 right-3 z-30 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/60 text-white select-none"
-            aria-label="Close camera"
-            onClick={closeCamera}
-          >
-            <X className="size-5" />
-          </button>
-        ) : null}
-
-        <div
-          className={cn(
-            "z-20 flex flex-col gap-3",
-            cameraReady || previewUrl
-              ? "pointer-events-none absolute inset-x-0 bottom-0 p-4"
-              : "relative p-3",
-          )}
-        >
           {cameraReady || previewUrl ? (
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black to-transparent"
             />
           ) : null}
-          <div className="pointer-events-auto relative flex flex-col gap-3">
-            {status === "running" ? (
-              <PendingDots label="Classifying" className="text-white" />
-            ) : null}
+        </div>
 
-            {scan ? (
-              <div className="text-center" aria-live="polite">
-                <p className="text-3xl font-semibold tracking-tight text-white">
-                  {verdictHeadline(scan.verdict)}
-                </p>
-                <p className="mt-1 text-sm text-white/70">
-                  {formatFoodLabel(scan.label)} · {formatConfidence(scan.confidence)}
-                  {scan.lowConfidence ? " · Low confidence" : ""}
-                </p>
-              </div>
-            ) : null}
+        <div className="relative z-20 shrink-0 space-y-3 bg-black p-3">
+          {status === "running" ? (
+            <PendingDots label="Classifying" className="text-white" />
+          ) : null}
 
-            {error ? (
-              <p className="text-center text-sm text-red-300" role="alert">
-                {error}
+          {scan ? (
+            <div className="text-center" aria-live="polite">
+              <p className="text-3xl font-semibold tracking-tight text-white">
+                {verdictHeadline(scan.verdict)}
               </p>
-            ) : null}
+              <p className="mt-1 text-sm text-white/70">
+                {formatFoodLabel(scan.label)} · {formatConfidence(scan.confidence)}
+                {scan.lowConfidence ? " · Low confidence" : ""}
+              </p>
+            </div>
+          ) : null}
 
-            {!previewUrl ? (
-              <div className="flex flex-col gap-2">
-                {(secureContext === false || cameraError) && !cameraReady ? (
-                  <p className="hidden text-center text-sm text-white/80 desktop:block">
-                    {secureContext === false
-                      ? "Safari will not ask for the camera while the address bar says Not Secure. Open the https address."
-                      : cameraError}
-                  </p>
-                ) : null}
-                {!cameraReady ? (
-                  <button
-                    type="button"
-                    className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
-                    onClick={openCameraFromGesture}
-                    onTouchStart={markTouchStart}
-                    onTouchEnd={openCameraFromGesture}
-                  >
-                    {cameraPhase === "requesting" ? "Requesting camera…" : "Open camera"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
-                    disabled={status === "running"}
-                    onClick={() => void captureFrame()}
-                  >
-                    Capture
-                  </button>
-                )}
-                <label
-                  className={cn(
-                    buttonVariants({ variant: "outline" }),
-                    "relative h-11 w-full touch-manipulation border-white/15 bg-black/40 text-white active:!translate-none hover:bg-white/15 hover:text-white",
-                  )}
+          {error ? (
+            <p className="text-center text-sm text-red-300" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {!previewUrl ? (
+            <div className="flex flex-col gap-2">
+              {(secureContext === false || cameraError) && !cameraReady ? (
+                <p className="hidden text-center text-sm text-white/80 desktop:block">
+                  {secureContext === false
+                    ? "Safari will not ask for the camera while the address bar says Not Secure. Open the https address."
+                    : cameraError}
+                </p>
+              ) : null}
+              {!cameraReady ? (
+                <button
+                  type="button"
+                  className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80"
+                  onClick={openCameraFromGesture}
+                  onTouchStart={markTouchStart}
+                  onTouchEnd={openCameraFromGesture}
                 >
-                  Choose photo
-                  <input
-                    className="absolute inset-0 size-full cursor-pointer opacity-0"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    onChange={(event) => {
-                      takeFile(event.target.files?.[0] ?? null);
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
-                disabled={status === "running"}
-                onClick={reset}
+                  {cameraPhase === "requesting" ? "Requesting camera…" : "Open camera"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
+                  disabled={status === "running"}
+                  onClick={() => void captureFrame()}
+                >
+                  Capture
+                </button>
+              )}
+              <label
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "relative h-11 w-full overflow-hidden touch-manipulation border-white/15 bg-black/40 text-white transition-colors hover:bg-white/15 hover:text-white",
+                )}
               >
-                Try another
-              </button>
-            )}
-          </div>
+                Choose photo
+                <input
+                  className="absolute inset-0 z-10 size-full cursor-pointer opacity-0 file:hidden"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(event) => {
+                    takeFile(event.target.files?.[0] ?? null);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="h-11 w-full cursor-pointer touch-manipulation rounded-lg bg-primary text-sm font-medium text-primary-foreground select-none active:bg-primary/80 disabled:opacity-50"
+              disabled={status === "running"}
+              onClick={reset}
+            >
+              Try another
+            </button>
+          )}
         </div>
       </div>
     </section>
