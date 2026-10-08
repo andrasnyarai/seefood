@@ -1,19 +1,12 @@
+import { parseHistoryIds } from "@/lib/history-ids";
 import { rowToScan, type ClassificationRow } from "@/lib/scans";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export const maxDuration = 30;
 
-const MAX_IDS = 30;
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export async function GET(request: Request) {
   const raw = new URL(request.url).searchParams.get("ids") ?? "";
-  const ids = raw
-    .split(",")
-    .map((id) => id.trim())
-    .filter((id) => UUID.test(id))
-    .slice(0, MAX_IDS);
+  const ids = parseHistoryIds(raw);
 
   if (ids.length === 0) {
     return Response.json({ scans: [] });
